@@ -6,8 +6,8 @@ dist/
 wheels/
 *.egg-info
 .env
-data/landing/
-data/processed/
+data/**/*
+!**/ .gitkeep
 
 # Virtual environments
 .venv
