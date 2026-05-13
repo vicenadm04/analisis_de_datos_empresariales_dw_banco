@@ -8,5 +8,8 @@ wheels/
 data/**/*
 !**/ .gitkeep
 
+# Variables de entorno y credenciales
+.env
+
 # Virtual environments
 .venv
