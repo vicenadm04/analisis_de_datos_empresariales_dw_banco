@@ -84,7 +84,79 @@ def carga_dim_prestatario() -> None:
         print(f"Error al cargar dim_prestatario: {e}")
 
 
+def carga_dim_tipo_prestamo() -> None:
+    """Carga la dimensión dim_tipo_prestamo ejecutando load_dim_tipo_prestamo.sql."""
+    try:
+        connection = psycopg2.connect(dsn=DB_URI)
+        cursor = connection.cursor()
+
+        cursor.execute(_read_sql("load_dim_tipo_prestamo.sql"))
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+        print("dim_tipo_prestamo cargada correctamente.")
+
+    except psycopg2.Error as e:
+        print(f"Error al cargar dim_tipo_prestamo: {e}")
+
+
+def carga_dim_proposito() -> None:
+    """Carga la dimensión dim_proposito ejecutando load_dim_proposito.sql."""
+    try:
+        connection = psycopg2.connect(dsn=DB_URI)
+        cursor = connection.cursor()
+
+        cursor.execute(_read_sql("load_dim_proposito.sql"))
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+        print("dim_proposito cargada correctamente.")
+
+    except psycopg2.Error as e:
+        print(f"Error al cargar dim_proposito: {e}")
+
+
+def carga_dim_estado_prestamo() -> None:
+    """Carga la dimensión dim_estado_prestamo ejecutando load_dim_estado_prestamo.sql."""
+    try:
+        connection = psycopg2.connect(dsn=DB_URI)
+        cursor = connection.cursor()
+
+        cursor.execute(_read_sql("load_dim_estado_prestamo.sql"))
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+        print("dim_estado_prestamo cargada correctamente.")
+
+    except psycopg2.Error as e:
+        print(f"Error al cargar dim_estado_prestamo: {e}")
+
+
+def carga_dim_descuento() -> None:
+    """Carga la dimensión dim_descuento ejecutando load_dim_descuento.sql."""
+    try:
+        connection = psycopg2.connect(dsn=DB_URI)
+        cursor = connection.cursor()
+
+        cursor.execute(_read_sql("load_dim_descuento.sql"))
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+        print("dim_descuento cargada correctamente.")
+
+    except psycopg2.Error as e:
+        print(f"Error al cargar dim_descuento: {e}")
+
+
 if __name__ == "__main__":
     carga_dim_tiempo()
     carga_dim_sucursal()
     carga_dim_prestatario()
+    carga_dim_tipo_prestamo()
+    carga_dim_proposito()
+    carga_dim_estado_prestamo()
+    carga_dim_descuento()
