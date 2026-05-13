@@ -1,5 +1,49 @@
+import os
+
 import psycopg2
 from config import DB_URI
+
+SQL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sql")
+
+
+def _read_sql(filename: str) -> str:
+    path = os.path.join(SQL_DIR, filename)
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def carga_dim_tiempo() -> None:
+    """Genera la dimensión dim_tiempo ejecutando generar_dim_tiempo.sql."""
+    try:
+        connection = psycopg2.connect(dsn=DB_URI)
+        cursor = connection.cursor()
+
+        cursor.execute(_read_sql("generar_dim_tiempo.sql"))
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+        print("dim_tiempo cargada correctamente.")
+
+    except psycopg2.Error as e:
+        print(f"Error al cargar dim_tiempo: {e}")
+
+
+def carga_dim_sucursal() -> None:
+    """Carga la dimensión dim_sucursal ejecutando load_dim_sucursal.sql."""
+    try:
+        connection = psycopg2.connect(dsn=DB_URI)
+        cursor = connection.cursor()
+
+        cursor.execute(_read_sql("load_dim_sucursal.sql"))
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+        print("dim_sucursal cargada correctamente.")
+
+    except psycopg2.Error as e:
+        print(f"Error al cargar dim_sucursal: {e}")
 
 
 def carga_dim_prestatario() -> None:
@@ -41,4 +85,6 @@ def carga_dim_prestatario() -> None:
 
 
 if __name__ == "__main__":
+    carga_dim_tiempo()
+    carga_dim_sucursal()
     carga_dim_prestatario()
