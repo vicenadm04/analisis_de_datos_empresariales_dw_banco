@@ -97,9 +97,72 @@ def carga_dim_prestatario() -> None:
         cursor.close()
         connection.close()
 
+        print(
+            f"dim_prestatario cargada correctamente. {len(resultados_clientes)} registros cargados."
+        )
+
     except psycopg2.Error as e:
         print(f"Error al cargar dim_prestatario: {e}")
         print(last_row)
+
+
+def carga_dim_prestatario_optimizada() -> None:
+    """Carga la dimensión dim_prestatario usando INSERT...SELECT en una sola operación SQL."""
+    try:
+        connection = psycopg2.connect(dsn=DB_URI)
+        cursor = connection.cursor()
+
+        insert_sql = f"""
+            INSERT INTO dw_banco.dim_prestatario (
+                codigo_prestatario,
+                fecha_nacimiento,
+                cantidad_hijos,
+                ingreso_mensual,
+                direccion,
+                ciudad,
+                codigo_provincia,
+                provincia,
+                fecha_inicio_vigencia,
+                genero,
+                propiedad
+            )
+            SELECT
+                id_cliente,
+                birth_date_us::DATE,
+                0,
+                CASE
+                    WHEN annual_inc_sim_usd ~ '^\d+(\.\d+)?$'
+                    THEN annual_inc_sim_usd::NUMERIC / 12
+                    ELSE NULL
+                END,
+                address_line1_us,
+                city_us,
+                state_us,
+                state_name_us,
+                customer_since_us::DATE,
+                CASE
+                    WHEN gender_us IN ('M', 'F', 'X') THEN gender_us
+                    ELSE 'X'
+                END,
+                home_ownership_sim
+            FROM (
+                SELECT DISTINCT ON (id_cliente) *
+                FROM {SCHEMA_STAGING}.stg_clientes
+                ORDER BY id_cliente
+            ) sub;
+        """
+
+        cursor.execute(insert_sql)
+        filas = cursor.rowcount
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+
+        print(f"dim_prestatario cargada correctamente. {filas} registros cargados.")
+
+    except psycopg2.Error as e:
+        print(f"Error al cargar dim_prestatario: {e}")
 
 
 def carga_dim_tipo_prestamo() -> None:
@@ -173,7 +236,7 @@ def carga_dim_descuento() -> None:
 if __name__ == "__main__":
     carga_dim_tiempo()
     carga_dim_sucursal()
-    carga_dim_prestatario()
+    carga_dim_prestatario_optimizada()
     carga_dim_tipo_prestamo()
     carga_dim_proposito()
     carga_dim_estado_prestamo()
