@@ -29,16 +29,16 @@ Las librerías principales utilizadas y gestionadas automáticamente son:
 
 1. **Clonar el repositorio:**
 ```bash
-git clone <tu-url-de-github>
-cd DW_banco
+git clone https://github.com/vicenadm04/analisis_de_datos_empresariales_dw_banco.git
+cd dw_banco
 
 ```
 
 
-2. **Instalación Automática con `uv sync`:**
-No necesitas instalar librerías manualmente. Al ejecutar el siguiente comando, `uv` leerá los archivos `pyproject.toml` y `uv.lock` para instalar las versiones exactas en un entorno virtual nuevo:
+2. **Instalar dependencias:**
+Usamos pip para gestionar las librerías necesarias (Pandas, SQLAlchemy, etc.):
 ```bash
-uv sync
+pip install -r requirements.txt
 
 ```
 
@@ -46,7 +46,9 @@ uv sync
 3. **Variables de Entorno:**
 Crea un archivo `.env` en la raíz del proyecto para que el sistema reconozca tu base de datos (este archivo es ignorado por Git por seguridad):
 ```text
-DB_URI=postgresql://usuario:password@localhost:5432/nombre_db
+DB_URI=postgresql://usuario:contraseña@localhost:5432/dw_banco
+DB_NAME=dw_banco
+SCHEMA_STAGING=stg_banco
 
 ```
 
@@ -75,7 +77,17 @@ DW_banco/
 1. Coloca tus archivos CSV en la carpeta `data/landing/`. El sistema reconoce archivos que comiencen con: `loan`, `clientes` o `sucursales`.
 2. Ejecuta el pipeline:
 ```bash
-uv run scripts/etl_ingesta.py
+# 1. Inicializa la base de datos y esquemas
+python scripts/init_db.py
+
+# 2. Carga de datos maestros iniciales
+python scripts/carga_inicial.py
+
+# 3. Procesa y limpia archivos de data/landing a la capa Staging
+python scripts/carga_staging.py
+
+# 4. Carga final al Data Warehouse (Dimensiones y Hechos)
+python scripts/carga_warehouse.py
 
 ```
 
