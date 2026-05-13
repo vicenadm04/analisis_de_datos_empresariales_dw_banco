@@ -97,6 +97,10 @@ def init_db() -> None:
                 print("Esquema dw_banco existe pero sin tablas. Creando tablas…")
                 cur.execute(_read_sql("schema.sql"))
                 print("Tablas creadas correctamente.")
+
+            print("Registrando funciones y utilidades…")
+            cur.execute(_read_sql("functions_and_utils.sql"))
+            print("Funciones y utilidades registradas correctamente.")
     finally:
         conn.close()
 
