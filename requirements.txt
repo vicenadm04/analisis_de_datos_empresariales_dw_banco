@@ -1,0 +1,4 @@
+﻿polars==1.40.1
+polars-runtime-32==1.40.1
+psycopg2-binary==2.9.12
+python-dotenv==1.2.2
