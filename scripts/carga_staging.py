@@ -1,11 +1,22 @@
-import polars as pl
-from datetime import datetime
+import csv
 import io
+import logging
 import os
 import shutil
-import config  # Asegúrate de tener DB_URI aquí
-import utils  # Asegúrate de tener la función sanitizar_bytes aquí
+import time
 
+import psycopg2
+from sqlalchemy import create_engine
+
+import config
+import utils
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 SCHEMA_STAGING = config.SCHEMA_STAGING
 
@@ -16,7 +27,6 @@ def obtener_entidad(nombre_archivo):
     """
     nombre_min = nombre_archivo.lower()
 
-    # Definimos estrictamente tus 3 entidades
     if nombre_min.startswith("loan"):
         return "loan"
     elif nombre_min.startswith("clientes"):
@@ -24,7 +34,74 @@ def obtener_entidad(nombre_archivo):
     elif nombre_min.startswith("sucursales"):
         return "sucursales"
 
-    return None  # Si no es ninguno de los 3
+    return None
+
+
+def _extraer_columnas_csv(buffer: io.BytesIO) -> list[str]:
+    """Lee solo la primera línea del buffer para obtener los nombres de columna."""
+    primera_linea = buffer.readline().decode("utf-8", errors="replace")
+    reader = csv.reader(io.StringIO(primera_linea))
+    return [col.strip() for col in next(reader)]
+
+
+def _crear_tabla_staging(
+    cursor: psycopg2.extensions.cursor, schema: str, tabla: str, columnas_csv: list[str]
+) -> None:
+    """
+    Crea (o recrea) la tabla de staging con las columnas del CSV como TEXT
+    más las columnas de auditoría.
+    """
+    tabla_full = f"{schema}.{tabla}"
+    cursor.execute(f"DROP TABLE IF EXISTS {tabla_full}")
+
+    cols_sql = ", ".join(f'"{col}" TEXT' for col in columnas_csv)
+    ddl = f"""
+        CREATE TABLE {tabla_full} (
+            {cols_sql},
+            stg_fecha_carga TIMESTAMP DEFAULT NOW(),
+            stg_origen_archivo TEXT
+        )
+    """
+    cursor.execute(ddl)
+    logger.info(
+        "  Tabla %s creada (%d columnas del CSV + 2 de auditoría).",
+        tabla_full,
+        len(columnas_csv),
+    )
+
+
+def _copiar_csv(
+    cursor: psycopg2.extensions.cursor,
+    schema: str,
+    tabla: str,
+    columnas_csv: list[str],
+    buffer: io.BytesIO,
+    nombre_archivo: str,
+) -> tuple[int, float]:
+    """
+    Ejecuta COPY FROM STDIN para cargar el contenido del CSV en la tabla.
+    El buffer ya debe estar posicionado después del header.
+    """
+    tabla_full = f"{schema}.{tabla}"
+    cols_list = ", ".join(f'"{col}"' for col in columnas_csv)
+
+    copy_sql = f"""
+        COPY {tabla_full} ({cols_list})
+        FROM STDIN
+        WITH (FORMAT csv, HEADER false, DELIMITER ',', NULL '')
+    """
+
+    t_inicio = time.perf_counter()
+    cursor.copy_expert(copy_sql, buffer)
+    filas = cursor.rowcount
+    duracion = time.perf_counter() - t_inicio
+
+    cursor.execute(
+        f"UPDATE {tabla_full} SET stg_origen_archivo = %s WHERE stg_origen_archivo IS NULL",
+        (nombre_archivo,),
+    )
+
+    return filas, duracion
 
 
 def ejecutar_ingesta():
@@ -33,56 +110,86 @@ def ejecutar_ingesta():
 
     os.makedirs(folder_processed, exist_ok=True)
 
-    # Listamos archivos CSV en landing
     archivos = [f for f in os.listdir(folder_landing) if f.endswith(".csv")]
 
     if not archivos:
-        print("📭 No hay archivos nuevos para procesar.")
+        logger.info("No hay archivos nuevos para procesar en %s.", folder_landing)
         return
 
-    for nombre_archivo in archivos:
-        entidad = obtener_entidad(nombre_archivo)
+    logger.info("Encontrados %d archivo(s) CSV en %s.", len(archivos), folder_landing)
 
-        if entidad is None:
-            print(
-                f"⚠️ Ignorando {nombre_archivo}: No empieza con prestamos, clientes o sucursales."
-            )
-            continue
+    engine = create_engine(config.DB_URI)
+    conn = engine.raw_connection()
 
-        ruta_origen = os.path.join(folder_landing, nombre_archivo)
-        tabla_nom = f"stg_{entidad}"
+    try:
+        for nombre_archivo in archivos:
+            entidad = obtener_entidad(nombre_archivo)
 
-        print(f"⌛ Procesando {entidad} (Archivo: {nombre_archivo})...")
+            if entidad is None:
+                logger.warning(
+                    "Ignorando '%s': no coincide con loan, clientes o sucursales.",
+                    nombre_archivo,
+                )
+                continue
 
-        try:
-            # 1. Limpieza de bytes prohibidos
-            datos_limpios = utils.sanitizar_bytes(ruta_origen)
+            ruta_origen = os.path.join(folder_landing, nombre_archivo)
+            tabla_nom = f"stg_{entidad}"
 
-            # 2. Lectura con Polars
-            df = pl.read_csv(io.BytesIO(datos_limpios), encoding="utf8-lossy")
-
-            # 3. Metadatos de auditoría
-            df = df.with_columns(
-                [
-                    pl.lit(datetime.now()).alias("stg_fecha_carga"),
-                    pl.lit(nombre_archivo).alias("stg_origen_archivo"),
-                ]
+            logger.info(
+                "Procesando '%s' -> %s.%s ...",
+                nombre_archivo,
+                SCHEMA_STAGING,
+                tabla_nom,
             )
 
-            # 4. Carga a Postgres
-            df.write_database(
-                table_name=f"{SCHEMA_STAGING}.{tabla_nom}",
-                connection=config.DB_URI,
-                if_table_exists="append",
-                engine="sqlalchemy",
-            )
+            try:
+                datos_limpios = utils.sanitizar_bytes(ruta_origen)
+                tamano_mb = len(datos_limpios) / (1024 * 1024)
+                logger.info("  Archivo sanitizado (%.2f MB en memoria).", tamano_mb)
 
-            # 5. Movimiento a Processed
-            shutil.move(ruta_origen, os.path.join(folder_processed, nombre_archivo))
-            print(f"✅ Cargado en {SCHEMA_STAGING}.{tabla_nom} y movido a processed.")
+                buffer = io.BytesIO(datos_limpios)
 
-        except Exception as e:
-            print(f"❌ Error al procesar {nombre_archivo}: {e}")
+                columnas_csv = _extraer_columnas_csv(buffer)
+                logger.info(
+                    "  Columnas detectadas: %d -> %s",
+                    len(columnas_csv),
+                    columnas_csv[:5],
+                )
+
+                cursor = conn.cursor()
+                _crear_tabla_staging(cursor, SCHEMA_STAGING, tabla_nom, columnas_csv)
+
+                logger.info("  Ejecutando COPY FROM STDIN ...")
+                filas, duracion = _copiar_csv(
+                    cursor,
+                    SCHEMA_STAGING,
+                    tabla_nom,
+                    columnas_csv,
+                    buffer,
+                    nombre_archivo,
+                )
+                conn.commit()
+
+                vel = filas / duracion if duracion > 0 else 0
+                logger.info(
+                    "  COPY finalizado: %d filas en %.2fs (%.0f filas/s).",
+                    filas,
+                    duracion,
+                    vel,
+                )
+
+                shutil.move(ruta_origen, os.path.join(folder_processed, nombre_archivo))
+                logger.info("  Archivo movido a %s.", folder_processed)
+
+            except Exception:
+                conn.rollback()
+                logger.exception("Error al procesar '%s'.", nombre_archivo)
+
+    finally:
+        conn.close()
+        engine.dispose()
+
+    logger.info("Ingesta completa.")
 
 
 if __name__ == "__main__":

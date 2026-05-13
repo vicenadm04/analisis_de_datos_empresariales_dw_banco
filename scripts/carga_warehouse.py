@@ -2,6 +2,7 @@ import os
 
 import psycopg2
 from config import DB_URI
+from config import SCHEMA_STAGING
 
 SQL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sql")
 
@@ -48,30 +49,46 @@ def carga_dim_sucursal() -> None:
 
 def carga_dim_prestatario() -> None:
     """Carga la dimensión dim_prestatario en el warehouse a partir de staging."""
+    last_row = None
     try:
         connection = psycopg2.connect(dsn=DB_URI)
         cursor = connection.cursor()
 
-        query_clientes = "SELECT DISTINCT ON (id_cliente) * FROM staging.stg_clientes;"
+        query_clientes = (
+            f"SELECT DISTINCT ON (id_cliente) * FROM {SCHEMA_STAGING}.stg_clientes;"
+        )
         cursor.execute(query_clientes)
 
         resultados_clientes = cursor.fetchall()
         for row in resultados_clientes:
-            if row[3] is None:
-                row = ("X",) + row[1:]
+            last_row = row
+
+            gender = row[3]
+
+            if gender not in ["M", "F", "X"]:
+                gender = "X"
+
+            fecha_inicio_vigencia = row[13]
+            ingreso_mensual = None
+            if row[14] is not None:
+                try:
+                    ingreso_mensual = float(row[14]) / 12
+                except:
+                    ingreso_mensual = None
+
             cursor.execute(
                 "INSERT INTO dw_banco.dim_prestatario (codigo_prestatario, fecha_nacimiento, cantidad_hijos, ingreso_mensual, direccion, ciudad, codigo_provincia, provincia, fecha_inicio_vigencia, genero, propiedad) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     row[0],
                     row[4],
                     0,
-                    row[15] / 12,
+                    ingreso_mensual,
                     row[7],
                     row[8],
                     row[9],
                     row[10],
-                    row[14],
-                    row[3],
+                    fecha_inicio_vigencia,
+                    gender,
                     row[18],
                 ),
             )
@@ -82,6 +99,7 @@ def carga_dim_prestatario() -> None:
 
     except psycopg2.Error as e:
         print(f"Error al cargar dim_prestatario: {e}")
+        print(last_row)
 
 
 def carga_dim_tipo_prestamo() -> None:

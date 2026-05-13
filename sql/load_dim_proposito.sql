@@ -7,7 +7,7 @@ INSERT INTO DW_BANCO.DIM_PROPOSITO (CODIGO_PROPOSITO, DESCRIPCION)
 SELECT DISTINCT
     upper(DW_BANCO.fn_clean_text(purpose)) AS codigo_proposito,
     initcap(replace(lower(DW_BANCO.fn_clean_text(purpose)), '_', ' ')) AS descripcion
-FROM STG_BANCO.loan_2019_20
+FROM STG_BANCO.stg_loan
 WHERE DW_BANCO.fn_clean_text(purpose) IS NOT NULL
 ON CONFLICT (CODIGO_PROPOSITO) DO NOTHING;
 

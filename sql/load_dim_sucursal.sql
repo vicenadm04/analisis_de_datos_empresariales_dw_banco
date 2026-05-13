@@ -28,8 +28,8 @@ SELECT
     DATE '1900-01-01',  -- default por falta de columna en el origen
     NULL,
     CASE
-        WHEN activa_raw = 1 THEN TRUE
-        WHEN activa_raw <> 1 THEN FALSE
+        WHEN activa_raw = '1' THEN TRUE
+        WHEN activa_raw <> '1' THEN FALSE
         ELSE TRUE
     END
 FROM suc_dedup
