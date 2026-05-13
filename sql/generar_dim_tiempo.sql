@@ -1,0 +1,30 @@
+INSERT INTO DW_BANCO.DIM_TIEMPO (
+    ID_TIEMPO,
+    FECHA_COMPLETA,
+    DIA,
+    MES,
+    NOMBRE_MES,
+    TRIMESTRE,
+    SEMESTRE,
+    ANIO,
+    DIA_SEMANA
+)
+SELECT
+    TO_CHAR(fecha, 'YYYYMMDD')::INTEGER,
+    fecha::DATE,
+    EXTRACT(DAY FROM fecha)::SMALLINT,
+    EXTRACT(MONTH FROM fecha)::SMALLINT,
+    TRIM(TO_CHAR(fecha, 'TMMonth')),
+    EXTRACT(QUARTER FROM fecha)::SMALLINT,
+    CASE
+        WHEN EXTRACT(MONTH FROM fecha) <= 6 THEN 1
+        ELSE 2
+    END::SMALLINT,
+    EXTRACT(YEAR FROM fecha)::SMALLINT,
+    TRIM(TO_CHAR(fecha, 'TMDay'))
+FROM generate_series(
+    DATE '2010-01-01',
+    DATE '2030-12-31',
+    INTERVAL '1 day'
+) AS g(fecha)
+ON CONFLICT (FECHA_COMPLETA) DO NOTHING;
